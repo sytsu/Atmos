@@ -41,7 +41,7 @@ project = (app.parent / 'Madeira.xcodeproj/project.pbxproj').read_text(encoding=
 check('case .iniFiles: return "Settings files"' in library and
       'case .iniFiles: GameIniFilesSection(windowsPath: entry.windowsPath, gameFolder: iniGameFolder)' in library,
       'Game details has a Settings files page')
-check('[.library, .iniFiles, .advanced]' in library, 'for every game but the Desktop')
+check('[.library, .files, .iniFiles, .advanced]' in library, 'for every game but the Desktop')
 check('Label("Add .ini file", systemImage: "plus")' in source and '.sheet(' not in source,
       'the page offers "Add .ini file", pushed rather than a sheet that closed by itself')
 check(sum('GameIniFiles.swift' in line for line in project.splitlines()) == 4,

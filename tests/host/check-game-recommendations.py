@@ -143,17 +143,20 @@ assert 'MadeiraConfig.flag("MADEIRA_BIG_PICTURE_DOCK_LIBRARIES", fallback: true)
 assert 'MadeiraConfig.flag("MADEIRA_BIG_PICTURE_PIN", fallback: true)' in library \
     and 'fm.fileExists(atPath: "\\(folder.unix)/bin/cef/cef.win7/steamwebhelper.exe")' in library \
     and '(pinned ? " -nobootstrapperupdate -skipinitialbootstrap" : "")' in library
-# Big Picture is compiled out of every build without the MADEIRA_BIG_PICTURE_UI condition (no IPA build sets it).
-bp_button = library[library.index('#if MADEIRA_BIG_PICTURE_UI\n            if LibraryEntry.steamClientInstalled {'):]
-bp_button = bp_button[:bp_button.index('#endif')]
-assert 'Label("Big Picture", systemImage: "gamecontroller")' in bp_button and '.id(LibraryEntry.bigPictureID)' in bp_button, \
-    'the Big Picture button exists only under MADEIRA_BIG_PICTURE_UI'
-assert library.count('Label("Big Picture", systemImage: "gamecontroller")') == bp_button.count('Label("Big Picture", systemImage: "gamecontroller")'), \
-    'no Big Picture button outside that block'
+# Atmos Deck Mode (DeckMode.swift): Big Picture's button and card show with Deck Mode on, or in a
+# build with the MADEIRA_BIG_PICTURE_UI condition; never without the Steam client in the prefix.
+deck = (app / 'DeckMode.swift').read_text()
+assert library.count('headerPill(Text("Big Picture"), systemImage: "gamecontroller")') == 1 \
+    and 'if bigPictureButtonShown {' in library \
+    and 'private var bigPictureButtonShown: Bool { (deckMode || LibraryEntry.bigPictureShown) && LibraryEntry.steamClientInstalled }' in library \
+    and '@AppStorage(DeckMode.enabledKey) private var deckMode = false' in library, \
+    'the Big Picture button shows only with Deck Mode (or MADEIRA_BIG_PICTURE_UI) and a Steam client'
 assert '#if MADEIRA_BIG_PICTURE_UI\n    static let bigPictureShown = true\n#else\n    static let bigPictureShown = false\n#endif' in library \
     and 'MADEIRA_BIG_PICTURE"' not in library \
+    and 'var listedInLibrary: Bool { bigPicture != true || DeckMode.enabled }' in library \
+    and 'static var enabled: Bool { LibraryEntry.bigPictureShown || UserDefaults.standard.bool(forKey: enabledKey) }' in deck \
     and library.count('$0.desktop != true && $0.listedInLibrary') == 2 and 'entry.desktop != true && entry.listedInLibrary' in library, \
-    'without MADEIRA_BIG_PICTURE_UI no Big Picture card is listed, and no runtime switch brings it back'
+    'a Big Picture card is listed only with Deck Mode on (or MADEIRA_BIG_PICTURE_UI)'
 
 # madeira-bcd's defaults where upstream's differ: every game madeira-bcd ran had them,
 # so every game's own list ends with them. The standard list reaches every other game
