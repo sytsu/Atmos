@@ -769,7 +769,7 @@ extension URL {
             }
             guard registered else { LogStore.shared.log("[move] background task refused"); return }
         }
-        let request = BGContinuedProcessingTaskRequest(identifier: identifier, title: title, subtitle: "Madeira")
+        let request = BGContinuedProcessingTaskRequest(identifier: identifier, title: title, subtitle: "Atmos")
         request.strategy = .fail
         do { try BGTaskScheduler.shared.submit(request) } catch { LogStore.shared.log("[move] background task not submitted") }
     }
@@ -780,7 +780,7 @@ extension URL {
         self.task = task
         task.progress.totalUnitCount = 1000
         task.progress.completedUnitCount = Int64(fraction * 1000)
-        task.updateTitle(title, subtitle: "Madeira")
+        task.updateTitle(title, subtitle: "Atmos")
         task.expirationHandler = { LogStore.shared.log("[move] background time ended") }
     }
 

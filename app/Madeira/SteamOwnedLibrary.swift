@@ -527,6 +527,11 @@ final class SteamOwnedLibrary: ObservableObject {
     /// nil when it cannot be had; the Program picker then decides.
     func launchOptions(appID: Int) async -> [SteamLaunchOption]? {
         if let cached = game(appID)?.launches, cached.allSatisfy({ $0.index != nil }) { return cached }
+        // Atmos offline play: whatever was stored, without waiting on a connection.
+        if OfflinePlay.active {
+            OfflinePlay.note("Steam launch configuration taken from the cache")
+            return game(appID)?.launches
+        }
         guard Self.enabled, signedIn, !inSession, appID > 0, appID <= Int(UInt32.max) else { return nil }
         do {
             guard let info = try await fetcher.fetchAppInfo(appID: UInt32(appID)) else { return nil }

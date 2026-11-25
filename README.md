@@ -13,6 +13,11 @@
 Madeira runs Windows PC games on an iPhone, with no jailbreak. Games run as they
 are, unmodified, inside a single iOS app.
 
+> [!TIP]
+> **Atmos** is a fork of Madeira. It adds Deck Mode (Steam Big Picture as a
+> handheld home), faster offline starts, and an in-app game file editor with a
+> mod manager. See [docs/ATMOS.md](docs/ATMOS.md).
+
 > [!NOTE]
 > Madeira is an active research project. Many games start and some play well,
 > but performance and compatibility vary from game to game, and things change

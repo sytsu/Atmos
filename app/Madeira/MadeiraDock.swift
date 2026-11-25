@@ -607,7 +607,7 @@ enum DockOffline {
     static func configure(appID: Int) {
         sessionApp = appID
         sessionMarked = false
-        let offline = enabled && networkDown
+        let offline = enabled && (networkDown || OfflinePlay.forced)   // Atmos: Offline mode asks for the offline logon too
         if offline { setenv("MADEIRA_DOCK_OFFLINE", "1", 1) } else { unsetenv("MADEIRA_DOCK_OFFLINE") }
         SteamLog.event("[dock-offline] enabled=\(enabled ? 1 : 0) network=\(networkDown ? "down" : "up") request=\(offline ? 1 : 0) account-saved=\(accountSaved != nil ? 1 : 0) game-started-online=\(verified(appID) != nil ? 1 : 0)")
     }

@@ -15,7 +15,7 @@ enum SettingsPages {
     static var enabled: Bool { MadeiraConfig.flag("MADEIRA_SETTINGS_PAGES") }
 
     enum Page: Hashable, CaseIterable {
-        case steam, gog, itch, epic, ea, runtimes, graphics, display, memory, pointer, jit, signing, saves, drives,
+        case steam, gog, itch, epic, ea, runtimes, deck, offline, graphics, display, memory, pointer, jit, signing, saves, drives,
              appearance, advanced, credits
 
         var title: String {
@@ -26,6 +26,8 @@ enum SettingsPages {
             case .epic: return "Epic Games"
             case .ea: return "EA app"
             case .runtimes: return "Runtimes"
+            case .deck: return "Deck Mode"
+            case .offline: return "Offline play"
             case .graphics: return "Graphics"
             case .display: return "Display"
             case .memory: return "Memory and sync"
@@ -48,6 +50,8 @@ enum SettingsPages {
             case .epic: return "gamecontroller"
             case .ea: return "arrow.down.circle"
             case .runtimes: return "puzzlepiece.extension"
+            case .deck: return "gamecontroller"
+            case .offline: return "airplane"
             case .graphics: return "cpu"
             case .display: return "display"
             case .memory: return "memorychip"
@@ -81,6 +85,7 @@ enum SettingsPages {
     /// The rows of the Settings tab, in groups.
     static let groups: [(String?, [Page])] = [
         ("Getting games", [.steam, .gog, .itch, .epic, .ea, .runtimes]),
+        ("Playing", [.deck, .offline]),
         ("Running games", [.graphics, .display, .memory, .pointer]),
         ("Device", [.jit, .signing, .saves, .drives]),
         (nil, [.appearance, .advanced, .credits]),
@@ -121,6 +126,8 @@ struct SettingsPagesList: View {
         switch page {
         case .jit: return jitState.enabled ? "On" : "Off"
         case .appearance: return liquidMetal.on ? "Liquid metal" : "Liquid Glass"
+        case .deck: return DeckMode.enabled ? "On" : "Off"
+        case .offline: return OfflinePlay.forced ? "Offline mode" : OfflinePlay.networkDown ? "No network" : nil
         default: return nil
         }
     }
@@ -172,6 +179,8 @@ struct SettingsPageView: View {
             WineMonoSettingsSection()
             if VCRedistModel.enabled { VCRedistSettingsSection() }
             WineGeckoSettingsSection()
+        case .deck: DeckModeSettingsSection()
+        case .offline: OfflinePlaySettingsSection()
         case .graphics: GraphicsSettings(refresh: refresh)
         case .display: DisplayRateSettings()
         case .memory: RuntimeMemorySyncSettings(open: { sheet = $0 }, refresh: refresh)
@@ -234,6 +243,7 @@ struct SettingsCreditsSection: View {
     var body: some View {
         Section {
             MadeiraCredit(name: "Will Faust", handle: "willfaust", role: "Created Madeira")
+            MadeiraCredit(name: "kuscholar", handle: "kuscholar", role: "iDeck, which inspired Atmos's Deck Mode")
             MadeiraCredit(name: "Nick", handle: "125hz", role: "32-bit game support, the game library and Madeira Dock")
             MadeiraCredit(name: "Jfishin", handle: "Jfishin", role: "The original native Steam sign-in, library and downloads")
             MadeiraCredit(name: "Jesse", handle: "JesseLovelace", role: "Steam Cloud saves, faster game launches, and fixes that let more games run")

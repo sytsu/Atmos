@@ -623,7 +623,8 @@ struct LibraryEntry: Codable, Identifiable {
     static let bigPictureShown = false
 #endif
     /// Whether the library lists this entry: a Big Picture entry only while Big Picture is shown.
-    var listedInLibrary: Bool { bigPicture != true || Self.bigPictureShown }
+    /// Atmos: Deck Mode (DeckMode.swift) shows it at run time, without the build flag.
+    var listedInLibrary: Bool { bigPicture != true || DeckMode.enabled }
     /// The button is offered when Big Picture's folder has a client, or the Dock's steam.exe
     /// can seed one.
     static var steamClientInstalled: Bool {
@@ -1755,8 +1756,17 @@ final class LibraryModel: ObservableObject {
         DockStartScreen.shared.begin(dock, at: launchStarted)
         sawProcess = false
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.poll() }
+        // Atmos: 10 Hz while the starting screen waits for a game's first frames, so the
+        // game shows up to 0.4 s sooner; every 0.5 s otherwise, as before.
+        pollTick = 0
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.pollTick &+= 1
+            // A Dock start keeps 2 Hz: its poll lists the session's windows each time.
+            if (self.launching && !DockStartScreen.shared.active) || self.pollTick % 5 == 0 { self.poll() }
+        }
     }
+    private var pollTick = 0
     private func poll() {
         let dockStart = DockStartScreen.shared
         if dockStart.active {
@@ -2121,7 +2131,7 @@ final class LibraryJITState: ObservableObject {
 /// simulators: the M starts on the field's edge to the pixel on both.
 final class LibraryHeaderAlignment: ObservableObject {
     static let shared = LibraryHeaderAlignment()
-    static let title = "Madeira"
+    static let title = "Atmos"
     @Published private(set) var shift: CGFloat = 0
     weak var field: UIView?
     weak var anchor: UIView?
@@ -3331,6 +3341,8 @@ struct LibraryView: View {
     @State private var settingsSheet: SettingsSheet?
     @State private var settingsRefresh = 0
     @AppStorage("madeiraLibraryLayout") private var layout = "cards"
+    /// Atmos Deck Mode: Big Picture beside Desktop (DeckMode.swift).
+    @AppStorage(DeckMode.enabledKey) private var deckMode = false
     /// The new grid (LibraryGridPage.swift): off by default, and its stored size (a position on the levels).
     @AppStorage(LibraryGridArm.key) private var zoomableGrid = false
     @AppStorage(GridZoomHapticPlayer.key) private var zoomHaptics = true
@@ -3546,6 +3558,8 @@ struct LibraryView: View {
             if SteamSettingsSection.shown, settingsShow("Steam", "Dock", "sign in", "account", "setup") {
                 SteamSettingsSection(open: { settingsSheet = $0 })
             }
+            if settingsShow("Deck Mode", "Big Picture", "handheld", "iDeck", "start", "opens", "controller") { DeckModeSettingsSection() }
+            if settingsShow("offline", "airplane", "network", "Wi-Fi", "prepare", "no connection") { OfflinePlaySettingsSection() }
             if GOGLibrary.enabled, settingsShow("GOG", "GOG Galaxy", "sign in", "account") {
                 GOGSettingsSection(open: { settingsSheet = $0 })
             }
@@ -3703,12 +3717,13 @@ struct LibraryView: View {
         .onReceive(controller.commands) { command in
             guard tab == 0, selected == nil, !browser, !onboarding.presented else { return }
             let items = focusOrder
-            let ids = [LibraryEntry.desktopID] + items.map(\.id)
+            let header = headerIDs
+            let ids = header + items.map(\.id)
             let index = ids.firstIndex(where: { $0 == focused }) ?? 0
             if command == "add" { browser = true }
             else if command == "accept" {
-                if index == 0 { selected = model.entries.first(where: { $0.desktop == true }) ?? .desktopEntry }
-                else { selected = items[index - 1] }
+                if index < header.count { openHeader(ids[index]) }
+                else { selected = items[index - header.count] }
             }
             else if ["left", "right", "up", "down"].contains(command) {
                 let delta = command == "left" || command == "up" ? -1 : 1
@@ -3727,56 +3742,56 @@ struct LibraryView: View {
         }
         }
     }
-    /// The Desktop button at the top of the page (both grids).
+    /// The Desktop button at the top of the page (both grids), and Big Picture beside it.
     private var desktopButton: some View {
-        HStack {
-            Button { selected = model.entries.first(where: { $0.desktop == true }) ?? .desktopEntry } label: {
-                if liquidMetal.on {
-                    // On the chrome's middle band (dark, or light in light mode), with a soft
-                    // halo of the other tone for the moments a highlight passes under it.
-                    let light = colorScheme == .light
-                    Label("Desktop", systemImage: "desktopcomputer")
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(light ? .black : .white)
-                        .shadow(color: (light ? Color.white : .black).opacity(0.75), radius: 2.5)
-                        .padding(.horizontal, 14).frame(minHeight: 44)
-                        .background(LiquidMetalFill())
-                        // ml1217: the fill does not hit-test, so without this only the
-                        // glyphs took a tap (the plain fill's Capsule did).
-                        .contentShape(Capsule())
-                } else {
-                    Label("Desktop", systemImage: "desktopcomputer")
-                        .font(.subheadline.weight(.medium)).padding(.horizontal, 14).frame(minHeight: 44)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
-                }
-            }.buttonStyle(.plain)
+        HStack(spacing: 10) {
+            Button { openHeader(LibraryEntry.desktopID) } label: { headerPill(Text("Desktop"), systemImage: "desktopcomputer") }
+                .buttonStyle(.plain)
                 .animation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.4), value: liquidMetal.on)
                 .id(LibraryEntry.desktopID)
-                .overlay(RoundedRectangle(cornerRadius: 22).stroke(focused == LibraryEntry.desktopID && controller.connected ? Color.cyan : .clear, lineWidth: 3))
+                .overlay(Capsule().stroke(focused == LibraryEntry.desktopID && controller.connected ? Color.accentColor : .clear, lineWidth: 3))
             // ml2021: Valve's client in Big Picture, beside the Desktop, once Steam is installed in the prefix;
-            // only in builds with MADEIRA_BIG_PICTURE_UI (LibraryEntry.bigPictureShown).
-#if MADEIRA_BIG_PICTURE_UI
-            if LibraryEntry.steamClientInstalled {
-                Button { selected = model.entries.first(where: { $0.bigPicture == true }) ?? .bigPictureEntry } label: {
-                    if liquidMetal.on {
-                        let light = colorScheme == .light
-                        Label("Big Picture", systemImage: "gamecontroller")
-                            .font(.subheadline.weight(.semibold)).foregroundStyle(light ? .black : .white)
-                            .shadow(color: (light ? Color.white : .black).opacity(0.75), radius: 2.5)
-                            .padding(.horizontal, 14).frame(minHeight: 44)
-                            .background(LiquidMetalFill())
-                            .contentShape(Capsule())
-                    } else {
-                        Label("Big Picture", systemImage: "gamecontroller")
-                            .font(.subheadline.weight(.medium)).padding(.horizontal, 14).frame(minHeight: 44)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
-                    }
-                }.buttonStyle(.plain)
+            // with Deck Mode on (Settings › Deck Mode) or in builds with MADEIRA_BIG_PICTURE_UI.
+            if bigPictureButtonShown {
+                Button { openHeader(LibraryEntry.bigPictureID) } label: { headerPill(Text("Big Picture"), systemImage: "gamecontroller") }
+                    .buttonStyle(.plain)
                     .animation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.4), value: liquidMetal.on)
                     .id(LibraryEntry.bigPictureID)
-                    .accessibilityHint("Steam's gamepad interface in the Wine desktop")
+                    .overlay(Capsule().stroke(focused == LibraryEntry.bigPictureID && controller.connected ? Color.accentColor : .clear, lineWidth: 3))
+                    .accessibilityHint("Steam's controller interface, full screen")
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
-#endif
         }
+    }
+    /// A pill above the games: liquid metal when it is on, else the system's Liquid Glass
+    /// (LibraryPillGlass: a solid fill with Reduce Transparency, material before iOS 26).
+    @ViewBuilder private func headerPill(_ title: Text, systemImage: String) -> some View {
+        if liquidMetal.on {
+            // On the chrome's middle band (dark, or light in light mode), with a soft
+            // halo of the other tone for the moments a highlight passes under it.
+            let light = colorScheme == .light
+            Label { title } icon: { Image(systemName: systemImage) }
+                .font(.subheadline.weight(.semibold)).foregroundStyle(light ? .black : .white)
+                .shadow(color: (light ? Color.white : .black).opacity(0.75), radius: 2.5)
+                .padding(.horizontal, 16).frame(minHeight: 44)
+                .background(LiquidMetalFill())
+                // ml1217: the fill does not hit-test, so without this only the
+                // glyphs took a tap (the plain fill's Capsule did).
+                .contentShape(Capsule())
+        } else {
+            Label { title } icon: { Image(systemName: systemImage) }
+                .font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                .padding(.horizontal, 16).frame(minHeight: 44)
+                .modifier(LibraryPillGlass())
+                .contentShape(Capsule())
+        }
+    }
+    private var bigPictureButtonShown: Bool { (deckMode || LibraryEntry.bigPictureShown) && LibraryEntry.steamClientInstalled }
+    /// The buttons above the games, in the controller's focus order.
+    private var headerIDs: [UUID] { bigPictureButtonShown ? [LibraryEntry.desktopID, LibraryEntry.bigPictureID] : [LibraryEntry.desktopID] }
+    private func openHeader(_ id: UUID) {
+        if id == LibraryEntry.bigPictureID { selected = model.entries.first(where: { $0.bigPicture == true }) ?? .bigPictureEntry }
+        else { selected = model.entries.first(where: { $0.desktop == true }) ?? .desktopEntry }
     }
     /// The zoomable page (LibraryGridPage.swift): the card layouts as one pinchable collection view, with the same sheets and rules as `library`.
     private var zoomableLibrary: some View {
@@ -3787,12 +3802,13 @@ struct LibraryView: View {
         .onReceive(controller.commands) { command in
             guard tab == 0, selected == nil, !browser, !onboarding.presented else { return }
             let items = focusOrder
-            let ids = [LibraryEntry.desktopID] + items.map(\.id)
+            let header = headerIDs
+            let ids = header + items.map(\.id)
             let index = ids.firstIndex(where: { $0 == focused }) ?? 0
             if command == "add" { browser = true }
             else if command == "accept" {
-                if index == 0 { selected = model.entries.first(where: { $0.desktop == true }) ?? .desktopEntry }
-                else { selected = items[index - 1] }
+                if index < header.count { openHeader(ids[index]) }
+                else { selected = items[index - header.count] }
             }
             else if ["left", "right", "up", "down"].contains(command) {
                 let delta = command == "left" || command == "up" ? -1 : 1
@@ -4097,7 +4113,7 @@ struct LibraryDetail: View {
     }
     /// The pages the details page links to (iOS Settings style), each with its own Form.
     enum Page: Hashable {
-        case display, controls, launch, compatibility, steam, cloud, achievements, gog, itch, library, iniFiles, advanced
+        case display, controls, launch, compatibility, steam, cloud, achievements, gog, itch, library, files, iniFiles, advanced
         var title: String {
             switch self {
             case .display: return "Display"
@@ -4111,6 +4127,7 @@ struct LibraryDetail: View {
             case .itch: return "itch.io"
             case .achievements: return "Achievements"
             case .library: return "Library details"
+            case .files: return "Game files"
             case .iniFiles: return "Settings files"
             case .advanced: return "Advanced"
             }
@@ -4128,6 +4145,7 @@ struct LibraryDetail: View {
             case .itch: return "bag"
             case .achievements: return "trophy"
             case .library: return "info.circle"
+            case .files: return "folder"
             case .iniFiles: return "doc.text"
             case .advanced: return "wrench.and.screwdriver"
             }
@@ -4144,7 +4162,7 @@ struct LibraryDetail: View {
             : (SteamOwnedLibrary.cloudEnabled ? [.steam, .cloud, .achievements] : [.steam, .achievements])
                 + (SteamOwnedLibrary.workshopEnabled && Self.showsWorkshop(entry.steamAppID) ? [.workshop] : [])
         let tuning: [Page] = launch ? [.display, .controls, .launch, .compatibility] : [.display, .controls, .compatibility]
-        let more: [Page] = entry.desktop == true ? [.advanced] : [.library, .iniFiles, .advanced]
+        let more: [Page] = entry.desktop == true ? [.advanced] : [.library, .files, .iniFiles, .advanced]
         return [tuning, steam, more].filter { !$0.isEmpty }
     }
     /// Steam Workshop is offered unless Steam says the game has none
@@ -4185,6 +4203,7 @@ struct LibraryDetail: View {
             case .itch: ItchEntrySection(entry: $entry) { leaving = true; dismiss() }
             case .achievements: if let appID = entry.steamAppID { SteamAchievementsSection(appID: appID) }
             case .library: libraryPage
+            case .files: GameFilesSection(place: GameFiles.gamePlace(gameFolder: iniGameFolder, title: entry.title))
             case .iniFiles: GameIniFilesSection(windowsPath: entry.windowsPath, gameFolder: iniGameFolder)
             case .advanced: advancedPage
             }

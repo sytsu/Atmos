@@ -34,6 +34,7 @@ struct MadeiraApp: App {
                 .background(InteractionFrameRateInstaller())   // touch frame-rate request (New library grid)
                 .modifier(ClaimGamepadEvents())
                 .onAppear {
+                    OfflinePlay.begin()                           // network path for offline starts (OfflinePlay.swift)
                     ExternalDrives.shared.mountAll()
                     GamepadInput.shared.start()
                     HardwareInput.shared.start()

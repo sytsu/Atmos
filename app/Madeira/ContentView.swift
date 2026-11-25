@@ -1330,7 +1330,7 @@ struct ContentView: View {
                     developerBody
                 }
             }
-            .navigationTitle("Madeira")
+            .navigationTitle("Atmos")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.regularMaterial, for: .navigationBar)
             // The library keeps a material bar only before iOS 26. From iOS 26 the
@@ -2495,6 +2495,12 @@ struct ContentView: View {
         guard library.enabled else { return true }
         if library.cloudBypass == appID { library.cloudBypass = nil; return true }
         guard let hold = SteamOwnedLibrary.shared.cloudHold(appID) else { return true }
+        // Atmos offline play: without a connection the check can only time out. Saves that
+        // differ from what the last check found still hold the start.
+        if case .conflict = hold {} else if OfflinePlay.active {
+            OfflinePlay.note("Steam Cloud check before a start skipped")
+            return true
+        }
         library.cloudRetry = retry
         if hold == .stale { cloudWait(appID); return false }
         LogStore.shared.log("[steam-cloud] app=\(appID) before-play: held \(hold)")
@@ -2541,7 +2547,21 @@ struct ContentView: View {
             _ = NextSteamApp.take()
             launchShortcut(exe); return
         }
-        guard LibraryModel.sessionsThisRun == 0, let appID = NextSteamApp.take() else { return }
+        guard LibraryModel.sessionsThisRun == 0 else { return }
+        guard let appID = NextSteamApp.take() else {
+            // Atmos: Big Picture or the last game, as Atmos opens (Settings › Deck Mode). A moment
+            // later, so a link that opened the app at a cold start (it can arrive just after
+            // the library is up) starts its own game instead.
+            guard DeckMode.startAction != .none else { return }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                guard ShortcutRouter.shared.pendingExe == nil, library.current == nil, LibraryModel.sessionsThisRun == 0,
+                      !OnboardingModel.shared.presented,
+                      let entry = DeckMode.takeStartEntry(from: library.entries) else { return }
+                launchLibraryEntry(entry)
+            }
+            return
+        }
         guard let entry = library.entries.first(where: { $0.steamAppID == appID }) else {
             LogStore.shared.log("[dock-steam-run] app \(appID) is not in the library: not started", level: .error); return
         }
